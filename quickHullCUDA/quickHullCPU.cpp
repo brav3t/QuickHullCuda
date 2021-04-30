@@ -5,7 +5,7 @@
 int hullArraySize = 256;
 
 //
-void quickHull(int* hullX, int* hullY, size_t& hullSize, int* pointsX, int* pointsY, size_t N, int minX, int maxX, int side)
+void quickHull(int* hullX, int* hullY, size_t& hullSize, int* pointsX, int* pointsY, int minX, int maxX, int side)
 {
     // P1
     int x1 = pointsX[minX];
@@ -23,7 +23,7 @@ void quickHull(int* hullX, int* hullY, size_t& hullSize, int* pointsX, int* poin
     // Gets side of point P0(x0, y0) from line defined by P1(x1, y1) and P2(x2, y2).
     static auto getSide = [](int x1, int y1, int x2, int y2, int x0, int y0)
     {
-        int area = (y0 - y1) * (x2 - x1) - (y2 - y1) * (x0 - x1);
+        int area = (y0 - y1) * (x2 - x1) - (x0 - x1) * (y2 - y1);
         if (0 < area)
             return 1;
         if (area < 0)
@@ -87,12 +87,12 @@ void quickHull(int* hullX, int* hullY, size_t& hullSize, int* pointsX, int* poin
     }
 
     // Check for sides divided by idxMaxDist.
-    quickHull(hullX, hullY, hullSize, pointsX, pointsY, N, idxMaxDist, minX, -getSide(pointsX[idxMaxDist], pointsY[idxMaxDist], x1, y1, x2, y2));
-    quickHull(hullX, hullY, hullSize, pointsX, pointsY, N, idxMaxDist, maxX, -getSide(pointsX[idxMaxDist], pointsY[idxMaxDist], x2, y2, x1, y1));
+    quickHull(hullX, hullY, hullSize, pointsX, pointsY, idxMaxDist, minX, -getSide(pointsX[idxMaxDist], pointsY[idxMaxDist], x1, y1, x2, y2));
+    quickHull(hullX, hullY, hullSize, pointsX, pointsY, idxMaxDist, maxX, -getSide(pointsX[idxMaxDist], pointsY[idxMaxDist], x2, y2, x1, y1));
 }
 
 // 
-void quickHullCPU(int* pointsX, int* pointsY, size_t N)
+void quickHullCPU(int* pointsX, int* pointsY)
 {
     if (N < 3)
         return;
@@ -117,8 +117,8 @@ void quickHullCPU(int* pointsX, int* pointsY, size_t N)
     }
 
     // Run for both sides of the minX maxX defiend line.
-    quickHull(hullX, hullY, hullSize, pointsX, pointsY, N, minX, maxX, 1);
-    quickHull(hullX, hullY, hullSize, pointsX, pointsY, N, minX, maxX, -1);
+    quickHull(hullX, hullY, hullSize, pointsX, pointsY, minX, maxX, 1);
+    quickHull(hullX, hullY, hullSize, pointsX, pointsY, minX, maxX, -1);
 
     // Print the hull
     if (hullX == nullptr || hullY == nullptr)
@@ -126,6 +126,7 @@ void quickHullCPU(int* pointsX, int* pointsY, size_t N)
 
     for (size_t i = 0; i < hullSize; i++)
         printf("(%d, %d), ", hullX[i], hullY[i]);
+    printf("\n");
 
     free(hullX);
     free(hullY);

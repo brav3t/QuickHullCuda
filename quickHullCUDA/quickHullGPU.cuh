@@ -5,4 +5,4 @@
 
 #include "globals.h"
 
-void quickHullGPU(int* h_pointsX, int* h_pointsY, size_t N);
+void quickHullGPU(int* h_pointsX, int* h_pointsY);

@@ -1,6 +1,7 @@
 # QuickHullCuda
 
 Implementation of quick hull algorithm for CPU and for GPU.
+https://en.wikipedia.org/wiki/Quickhull
 Compare two solutions.
 
 CPU implementation is based on:
