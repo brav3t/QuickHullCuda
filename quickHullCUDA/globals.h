@@ -1,10 +1,13 @@
 //
 
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <functional>
 #include <limits.h>
+#include <chrono>
 
-#define N 10
+#define N 100
 #define BLOCK_SIZE 1024
 
 #define CUDA_CALL(x) do { if((x)!=cudaSuccess) { \
