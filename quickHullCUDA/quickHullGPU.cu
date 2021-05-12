@@ -15,9 +15,6 @@ __device__ int d_hullX[N];
 __device__ int d_hullY[N];
 __device__ int d_hullSize;
 
-//__managed__ int d_pointsX[N];
-//__managed__ int d_pointsY[N];
-
 // Has warp
 // Has shared memory bank conflicts
 // Has instruction overhead
@@ -145,7 +142,7 @@ __global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int
     //printf("distances[%d] = %d\n", gid, distances[gid]);
 }
 
-__global__ void getSide(int* side, int* P1Idx, int* P2Idx, int* maxDistIdx, int* pointsX, int* pointsY)
+__global__ void getSide(int* side, int* maxDistIdx, int* P1Idx, int* P2Idx, int* pointsX, int* pointsY)
 {
     int x1 = pointsX[*P1Idx];
     int y1 = pointsY[*P1Idx];
@@ -159,7 +156,6 @@ __global__ void getSide(int* side, int* P1Idx, int* P2Idx, int* maxDistIdx, int*
         *side = 1;
     if (area < 0)
         *side = -1;
-    *side = 0;
 }
 
 __global__ void tryAddToHull(int* P1Idx, int* P2Idx, int* pointsX, int* pointsY)
@@ -204,10 +200,12 @@ __global__ void tryAddToHull(int* P1Idx, int* P2Idx, int* pointsX, int* pointsY)
 
 void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point of line*/, int expectedSide, int* d_pointsX, int* d_pointsY)
 {
+    // Calculate all points distances from the line.
     int* d_distances;
     CUDA_CALL(cudaMalloc((void**)&d_distances, N * sizeof(int)));
     getDistancesFromLine<<<gridSize, BLOCK_SIZE>>>(d_distances, d_P1Idx, d_P2Idx, d_pointsX, d_pointsY, expectedSide);
 
+    // Get the max distance from distances.
     int* d_maxDist;
     CUDA_CALL(cudaMalloc((void**)&d_maxDist, sizeof(int)));
     reduceMax<<<gridSize, BLOCK_SIZE, BLOCK_SIZE>>>(d_maxDist, d_distances);
@@ -219,7 +217,6 @@ void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point o
     {
         // Need to copy back hullSize for thread count.
         int h_hullSize;
-        //CUDA_CALL(cudaMemcpy(&h_hullSize, d_hullSize, sizeof(int), cudaMemcpyDeviceToHost));
         CUDA_CALL(cudaMemcpyFromSymbol(&h_hullSize, d_hullSize, sizeof(int)));
         int blockSize = h_hullSize + 1;
         tryAddToHull<<<gridSize, blockSize>>>(d_P1Idx, d_P2Idx, d_pointsX, d_pointsY);
@@ -228,17 +225,24 @@ void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point o
 
     int* d_maxDistIdx;
     CUDA_CALL(cudaMalloc((void**)&d_maxDistIdx, sizeof(int)));
-    getIndexOfValue<<<gridSize, BLOCK_SIZE>>>(d_maxDistIdx, d_maxDist, d_distances); // ha több max értMEék van bármelyik beleírhatódik, nem baj a versenyhelyzet
+    getIndexOfValue<<<gridSize, BLOCK_SIZE>>>(d_maxDistIdx, d_maxDist, d_distances); // No problem if there are more values.
 
     CUDA_CALL(cudaFree(d_distances));
 
+    // Calculate the side of max distance.
     int* d_side;
     CUDA_CALL(cudaMalloc((void**)&d_side, sizeof(int)));
-    getSide<<<1, 1 >>>(d_side, d_P1Idx, d_P2Idx, d_maxDistIdx, d_pointsX, d_pointsY); // This is just awfull.
+    getSide<<<1, 1>>>(d_side, d_maxDistIdx, d_P1Idx, d_P2Idx, d_pointsX, d_pointsY); // This is just awfull.
     int h_side = 0;
     CUDA_CALL(cudaMemcpy(&h_side, d_side, sizeof(int), cudaMemcpyDeviceToHost));
 
     quickHull(d_maxDistIdx, d_P1Idx, -h_side, d_pointsX, d_pointsY);
+
+    // 
+    getSide<<<1, 1>>>(d_side, d_maxDistIdx, d_P2Idx, d_P1Idx, d_pointsX, d_pointsY); // This is just awfull.
+    h_side = 0;
+    CUDA_CALL(cudaMemcpy(&h_side, d_side, sizeof(int), cudaMemcpyDeviceToHost));
+
     quickHull(d_maxDistIdx, d_P2Idx, -h_side, d_pointsX, d_pointsY);
 }
 
@@ -248,7 +252,7 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
         return;
 
     cudaDeviceProp deviceProp;
-    cudaGetDeviceProperties(&deviceProp, 0);
+    CUDA_CALL(cudaGetDeviceProperties(&deviceProp, 0));
 
     // Copy coordinates to device
     int* d_pointsX;
@@ -257,8 +261,6 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
     CUDA_CALL(cudaMalloc((void**)&d_pointsY, N * sizeof(int)));
     CUDA_CALL(cudaMemcpy(d_pointsX, h_pointsX, N * sizeof(int), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(d_pointsY, h_pointsY, N * sizeof(int), cudaMemcpyHostToDevice));
-    //CUDA_CALL(cudaMemcpyToSymbol(d_pointsX, h_pointsX, N * sizeof(int)));
-    //CUDA_CALL(cudaMemcpyToSymbol(d_pointsY, h_pointsY, N * sizeof(int)));
 
     CUDA_CALL(cudaMemcpyToSymbol(d_hullSize, &h_hullSize, sizeof(int)));
 
@@ -296,8 +298,6 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
     CUDA_CALL(cudaMemcpyFromSymbol(h_hullX, d_hullX, N * sizeof(int)));
     CUDA_CALL(cudaMemcpyFromSymbol(h_hullY, d_hullY, N * sizeof(int)));
     CUDA_CALL(cudaMemcpyFromSymbol(&h_hullSize, d_hullSize, sizeof(int)));
-
-    //cudaDeviceSynchronize();   // Wait until GPU kernel function finishes !!   
 
     for (size_t i = 0; i < h_hullSize; i++)
         printf("(%d, %d), ", h_hullX[i], h_hullY[i]);
