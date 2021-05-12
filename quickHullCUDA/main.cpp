@@ -23,6 +23,7 @@ int main()
     int pointsY[N];
     pointGenerator(pointsX, pointsY);
 
+    // Prints out generated files for debug.
     //for (size_t i = 0; i < N; i++)
     //    printf("(%d, %d), ", pointsX[i], pointsY[i]);
     //printf("\n\n");
@@ -35,9 +36,9 @@ int main()
 
 void pointGenerator(int* array1, int* array2)
 {
-    srand(time(0));
+    srand((unsigned)time(NULL));
     for (size_t i = 0; i < 2 * N; ++i)
-        (i < N) ? array1[i] = rand() % N : array2[i - N] = rand() % N;
+        (i < N) ? array1[i] = rand() % MAX_COORD : array2[i - N] = rand() % MAX_COORD;
 }
 
 void measureFunctionTime(std::function<void(int*, int*)> function, int* param1, int* param2)
@@ -51,10 +52,10 @@ void measureFunctionTime(std::function<void(int*, int*)> function, int* param1, 
     function(param1, param2);
     auto t2 = high_resolution_clock::now();
 
-    /* Getting number of milliseconds as an integer. */
+    // Getting number of milliseconds as an integer.
     auto ms_int = duration_cast<milliseconds>(t2 - t1);
 
-    /* Getting number of milliseconds as a double. */
+    // Getting number of milliseconds as a double.
     duration<double, std::milli> ms_double = t2 - t1;
 
     std::cout << ms_int.count() << "ms\n";

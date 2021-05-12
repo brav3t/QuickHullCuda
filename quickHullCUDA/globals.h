@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <functional>
-#include <limits.h>
 #include <chrono>
 
 #define N 10
+#define MAX_COORD 100
