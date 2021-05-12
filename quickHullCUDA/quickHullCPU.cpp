@@ -2,7 +2,7 @@
 
 #include "quickHullCPU.h"
 
-// Results come here
+// Results come here.
 int _hullX[N];
 int _hullY[N];
 int _hullSize = 0;
@@ -10,7 +10,39 @@ int _hullSize = 0;
 int* _pointsX;
 int* _pointsY;
 
-//
+// Main function that is called recursively.
+void quickHull(int P1Idx_, int P2Idx_, int expectedSide_);
+
+// 
+void quickHullCPU(int* pointsX_, int* pointsY_)
+{
+    if (N < 3 && !pointsX_ && !pointsY_)
+        return;
+
+    _pointsX = pointsX_;
+    _pointsY = pointsY_;
+
+    int minIdx = 0;
+    int maxIdx = 0;
+    for (int i = 1; i < N; ++i)
+    {
+        if (_pointsX[i] < _pointsX[minIdx])
+            minIdx = i;
+
+        if (_pointsX[maxIdx] < _pointsX[i])
+            maxIdx = i;
+    }
+
+    // Run for both sides of the minIdx and maxIdx defied line.
+    quickHull(minIdx, maxIdx, 1);
+    quickHull(minIdx, maxIdx, -1);
+
+    // Print out results for debug.
+    for (size_t i = 0; i < _hullSize; ++i)
+        printf("(%d, %d), ", _hullX[i], _hullY[i]);
+    printf("\n");
+}
+
 void quickHull(int P1Idx_, int P2Idx_, int expectedSide_)
 {
     // P1
@@ -84,33 +116,4 @@ void quickHull(int P1Idx_, int P2Idx_, int expectedSide_)
     // Check for sides divided by maxDistIdx.
     quickHull(maxDistIdx, P1Idx_, -getSide(_pointsX[maxDistIdx], _pointsY[maxDistIdx], x1, y1, x2, y2));
     quickHull(maxDistIdx, P2Idx_, -getSide(_pointsX[maxDistIdx], _pointsY[maxDistIdx], x2, y2, x1, y1));
-}
-
-// 
-void quickHullCPU(int* pointsX_, int* pointsY_)
-{
-    if (N < 3 && !pointsX_ && !pointsY_)
-        return;
-
-    _pointsX = pointsX_;
-    _pointsY = pointsY_;
-
-    int minIdx = 0;
-    int maxIdx = 0;
-    for (int i = 1; i < N; ++i)
-    {
-        if (_pointsX[i] < _pointsX[minIdx])
-            minIdx = i;
-
-        if (_pointsX[maxIdx] < _pointsX[i])
-            maxIdx = i;
-    }
-
-    // Run for both sides of the minIdx maxIdx defiend line.
-    quickHull(minIdx, maxIdx, 1);
-    quickHull(minIdx, maxIdx, -1);
-
-    for (size_t i = 0; i < _hullSize; ++i)
-        printf("(%d, %d), ", _hullX[i], _hullY[i]);
-    printf("\n");
 }
