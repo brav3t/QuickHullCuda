@@ -6,6 +6,7 @@
 #include "globals.h"
 
 #define BLOCK_SIZE 1024
+#define GRID_SIZE ((N - 1) / BLOCK_SIZE + 1)
 
 #define CUDA_CALL(x) do { if((x)!=cudaSuccess) { \
     printf("\nError at %s line:%d\n",__FILE__,__LINE__); exit(EXIT_FAILURE); } } while(0)

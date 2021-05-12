@@ -3,8 +3,6 @@
 #include "quickHullGPU.cuh"
 
 // Host
-const unsigned int gridSize = (N - 1) / BLOCK_SIZE + 1;
-
 // Result come to hull - max size is needed because all coordinate can be the part of the hull.
 int h_hullX[N];
 int h_hullY[N];
@@ -203,12 +201,12 @@ void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point o
     // Calculate all points distances from the line.
     int* d_distances;
     CUDA_CALL(cudaMalloc((void**)&d_distances, N * sizeof(int)));
-    getDistancesFromLine<<<gridSize, BLOCK_SIZE>>>(d_distances, d_P1Idx, d_P2Idx, d_pointsX, d_pointsY, expectedSide);
+    getDistancesFromLine<<<GRID_SIZE, BLOCK_SIZE>>>(d_distances, d_P1Idx, d_P2Idx, d_pointsX, d_pointsY, expectedSide);
 
     // Get the max distance from distances.
     int* d_maxDist;
     CUDA_CALL(cudaMalloc((void**)&d_maxDist, sizeof(int)));
-    reduceMax<<<gridSize, BLOCK_SIZE, BLOCK_SIZE>>>(d_maxDist, d_distances);
+    reduceMax<<<GRID_SIZE, BLOCK_SIZE, BLOCK_SIZE>>>(d_maxDist, d_distances);
 
     // Need to copy back max distance from line for CPU to decide that the recursion can be return, and the points can be added to hull.
     int h_maxDist = -1;
@@ -219,13 +217,13 @@ void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point o
         int h_hullSize;
         CUDA_CALL(cudaMemcpyFromSymbol(&h_hullSize, d_hullSize, sizeof(int)));
         int blockSize = h_hullSize + 1;
-        tryAddToHull<<<gridSize, blockSize>>>(d_P1Idx, d_P2Idx, d_pointsX, d_pointsY);
+        tryAddToHull<<<GRID_SIZE, blockSize>>>(d_P1Idx, d_P2Idx, d_pointsX, d_pointsY);
         return;
     }
 
     int* d_maxDistIdx;
     CUDA_CALL(cudaMalloc((void**)&d_maxDistIdx, sizeof(int)));
-    getIndexOfValue<<<gridSize, BLOCK_SIZE>>>(d_maxDistIdx, d_maxDist, d_distances); // No problem if there are more values.
+    getIndexOfValue<<<GRID_SIZE, BLOCK_SIZE>>>(d_maxDistIdx, d_maxDist, d_distances); // No problem if there are more values.
 
     CUDA_CALL(cudaFree(d_distances));
 
@@ -269,9 +267,9 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
     int* d_max;
     CUDA_CALL(cudaMalloc((void**)&d_min, sizeof(int)));
     CUDA_CALL(cudaMalloc((void**)&d_max, sizeof(int)));
-    reduceMin<<<gridSize, BLOCK_SIZE, BLOCK_SIZE>>>(d_min, d_pointsX);
+    reduceMin<<<GRID_SIZE, BLOCK_SIZE, BLOCK_SIZE>>>(d_min, d_pointsX);
     //reduceMin<<<1, blockSize, blockSize>>>(d_minX, d_minX);
-    reduceMax<<<gridSize, BLOCK_SIZE, BLOCK_SIZE>>>(d_max, d_pointsX);
+    reduceMax<<<GRID_SIZE, BLOCK_SIZE, BLOCK_SIZE>>>(d_max, d_pointsX);
     //reduceMax<<<1, blockSize, blockSize>>>(d_maxX, d_maxX);
 
     // Get the index of min and max values
@@ -279,8 +277,8 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
     int* d_maxIdx;
     CUDA_CALL(cudaMalloc((void**)&d_minIdx, sizeof(int)));
     CUDA_CALL(cudaMalloc((void**)&d_maxIdx, sizeof(int)));
-    getIndexOfValue<<<gridSize, BLOCK_SIZE>>>(d_minIdx, d_min, d_pointsX);
-    getIndexOfValue<<<gridSize, BLOCK_SIZE>>>(d_maxIdx, d_max, d_pointsX);
+    getIndexOfValue<<<GRID_SIZE, BLOCK_SIZE>>>(d_minIdx, d_min, d_pointsX);
+    getIndexOfValue<<<GRID_SIZE, BLOCK_SIZE>>>(d_maxIdx, d_max, d_pointsX);
     CUDA_CALL(cudaFree(d_min));
     CUDA_CALL(cudaFree(d_max));
 
