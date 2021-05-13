@@ -8,16 +8,13 @@ __device__ int d_hullY[N];
 __device__ int d_hullSize;
 
 // HOST
-// Result come to hull - max size is needed because all coordinate can be the part of the hull.
+// Result came to hull - max size is needed because all coordinate can be the part of the hull.
 int h_hullX[N];
 int h_hullY[N];
 int h_hullSize = 0; // Counts how many points are added to the hull.
 
 void quickHullGPU(int* h_pointsX, int* h_pointsY)
 {
-    if (N < 3 && !h_pointsX && !h_pointsY)
-        return;
-
     // Copy coordinates to device.
     int* d_pointsX;
     int* d_pointsY;
@@ -69,6 +66,7 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
     CUDA_CALL(cudaMemcpyFromSymbol(h_hullY, d_hullY, N * sizeof(int)));
     CUDA_CALL(cudaMemcpyFromSymbol(&h_hullSize, d_hullSize, sizeof(int)));
 
+    printf("\n");
     for (size_t i = 0; i < h_hullSize; i++)
         printf("(%d, %d), ", h_hullX[i], h_hullY[i]);
     printf("\n");
@@ -102,7 +100,6 @@ void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point o
     int* d_maxDistIdx;
     CUDA_CALL(cudaMalloc((void**)&d_maxDistIdx, sizeof(int)));
     getIndexOfValue<<<GRID_SIZE, BLOCK_SIZE>>>(d_maxDistIdx, d_maxDist, d_distances); // No problem if there are more equal values.
-
     CUDA_CALL(cudaFree(d_maxDist));
     CUDA_CALL(cudaFree(d_distances));
 
@@ -121,16 +118,23 @@ void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point o
 
 // DEVICE
 
-__global__ static void MinSearch(int* min, int* array)
+__global__ void MinSearch(int* min, int* array)
 {
+    int gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (N <= gid)
+        return;
+
     __shared__ int localMin[BLOCK_SIZE * 2];
     int blockSize = BLOCK_SIZE;
     int itemc1 = threadIdx.x * 2;
     int itemc2 = threadIdx.x * 2 + 1;
-    for (int k = 0; k <= 1; k++) {
+    for (int k = 0; k <= 1; k++)
+    {
         int blockStart = blockIdx.x * blockDim.x * 4 + k * blockDim.x * 2;
         int loadIndx = threadIdx.x + blockDim.x * k;
-        if (blockStart + itemc2 < N) {
+        if (blockStart + itemc2 < N)
+        {
             int value1 = array[blockStart + itemc1];
             int value2 = array[blockStart + itemc2];
             localMin[loadIndx] = value1 < value2 ? value1 : value2;
@@ -158,16 +162,23 @@ __global__ static void MinSearch(int* min, int* array)
     }
 }
 
-__global__ static void MaxSearch(int* max, int* array)
+__global__ void MaxSearch(int* max, int* array)
 {
+    int gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (N <= gid)
+        return;
+
     __shared__ int localMax[BLOCK_SIZE * 2];
     int blockSize = BLOCK_SIZE;
     int itemc1 = threadIdx.x * 2;
     int itemc2 = threadIdx.x * 2 + 1;
-    for (int k = 0; k <= 1; k++) {
+    for (int k = 0; k <= 1; k++)
+    {
         int blockStart = blockIdx.x * blockDim.x * 4 + k * blockDim.x * 2;
         int loadIndx = threadIdx.x + blockDim.x * k;
-        if (blockStart + itemc2 < N) {
+        if (blockStart + itemc2 < N)
+        {
             int value1 = array[blockStart + itemc1];
             int value2 = array[blockStart + itemc2];
             localMax[loadIndx] = value1 > value2 ? value1 : value2;
@@ -190,6 +201,7 @@ __global__ static void MaxSearch(int* max, int* array)
     }
     if (threadIdx.x == 0)
     {
+        *max = -1;
         atomicMax(max, localMax[0]);
     }
 }
@@ -211,6 +223,13 @@ __global__ void getIndexOfValue(int* index, int* value, int* array)
         *index = gid;
         //printf("index = %d\n", *index);
     }
+
+    // Debug
+    __syncthreads();
+    if (!gid && *index == -1)
+    {
+        printf("\nWARNING! index=-1 | value = %d\n", *value);
+    }
 }
 
 __global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int* expectedSide, int* pointsX, int* pointsY)
@@ -226,7 +245,6 @@ __global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int
     // P2
     int x2 = pointsX[*P2Idx];
     int y2 = pointsY[*P2Idx];
-
     // P0
     int x0 = pointsX[gid];
     int y0 = pointsY[gid];
@@ -236,7 +254,7 @@ __global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int
     int area = (y0 - y1) * (x2 - x1) - (x0 - x1) * (y2 - y1);
     if (0 < area)
         side = 1;
-    else if (area < 0)
+    if (area < 0)
         side = -1;
 
     if (side == *expectedSide)
@@ -251,22 +269,22 @@ __global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int
     //printf("%d ", distances[gid]);
 }
 
-__global__ void getSide(int* side, int* maxDistIdx, int* P1Idx, int* P2Idx, int* pointsX, int* pointsY)
+__global__ void getSide(int* side, int* P1Idx, int* P2Idx, int* P0Idx, int* pointsX, int* pointsY)
 {
     int x1 = pointsX[*P1Idx];
     int y1 = pointsY[*P1Idx];
     int x2 = pointsX[*P2Idx];
     int y2 = pointsY[*P2Idx];
-    int x0 = pointsX[*maxDistIdx];
-    int y0 = pointsY[*maxDistIdx];
+    int x0 = pointsX[*P0Idx];
+    int y0 = pointsY[*P0Idx];
 
+    *side = 0;
     int area = (y0 - y1) * (x2 - x1) - (x0 - x1) * (y2 - y1);
     if (0 < area)
         *side = 1;
     if (area < 0)
         *side = -1;
     *side = -(*side);
-
     //printf("%d ", *side);
 };
 
@@ -284,7 +302,7 @@ __global__ void tryAddToHull(int* P1Idx, int* P2Idx, int* pointsX, int* pointsY)
         sh_foundP2 = false;
     }
 
-    if (tid < d_hullSize)
+    if (tid <= d_hullSize)
     {
         if (d_hullX[gid] == pointsX[*P1Idx] && d_hullY[gid] == pointsY[*P1Idx])
             sh_foundP1 = true;

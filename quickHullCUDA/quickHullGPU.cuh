@@ -5,7 +5,7 @@
 
 #include "globals.h"
 
-#define BLOCK_SIZE 32
+#define BLOCK_SIZE 512 // Block size should not be smaller than N -> breaks MinSearch()
 #define GRID_SIZE ((N - 1) / BLOCK_SIZE + 1)
 
 #define CUDA_CALL(x) do { if((x)!=cudaSuccess) { \
@@ -17,8 +17,8 @@ __global__ static void MaxSearch(int* max, int* array);
 __global__ void getIndexOfValue(int* index, int* value, int* array);
 // Returns and calculates all points distances from P1-P2 line. If side is not correct then distance is zero.
 __global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int* expectedSide, int* pointsX, int* pointsY);
-// Get the side of the point which has the max distance from P1-P2 line.
-__global__ void getSide(int* side, int* maxDistIdx, int* P1Idx, int* P2Idx, int* pointsX, int* pointsY);
+// Get the side of P0 point from P1-P2 line.
+__global__ void getSide(int* side, int* P1Idx, int* P2Idx, int* P0Idx, int* pointsX, int* pointsY);
 // If P1 or P2 is not in hull then add to it.
 __global__ void tryAddToHull(int* P1Idx, int* P2Idx, int* pointsX, int* pointsY);
 

@@ -6,5 +6,5 @@
 #include <functional>
 #include <chrono>
 
-#define N 10
+#define N 10000
 #define MAX_COORD 100

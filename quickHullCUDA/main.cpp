@@ -4,7 +4,9 @@
 #include "quickHullCPU.h"
 #include "quickHULLGPU.cuh"
 
+// Generates N points.
 void pointGenerator(int* array1, int* array2);
+// Measures function runtime in ms.
 void measureFunctionTime(std::function<void(int*, int*)> function, int* param1, int* param2);
 
 int main()
@@ -23,7 +25,7 @@ int main()
     int pointsY[N];
     pointGenerator(pointsX, pointsY);
 
-    // Prints out generated files for debug.
+    // Debug generated files.
     //for (size_t i = 0; i < N; i++)
     //    printf("(%d, %d), ", pointsX[i], pointsY[i]);
     //printf("\n\n");

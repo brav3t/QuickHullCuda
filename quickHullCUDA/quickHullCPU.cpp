@@ -12,9 +12,6 @@ int* _pointsY;
 
 void quickHullCPU(int* pointsX_, int* pointsY_)
 {
-    if (N < 3 && !pointsX_ && !pointsY_)
-        return;
-
     _pointsX = pointsX_;
     _pointsY = pointsY_;
 
@@ -34,6 +31,7 @@ void quickHullCPU(int* pointsX_, int* pointsY_)
     quickHull(minIdx, maxIdx, -1);
 
     // Debug results.
+    printf("\n");
     for (size_t i = 0; i < _hullSize; ++i)
         printf("(%d, %d), ", _hullX[i], _hullY[i]);
     printf("\n");
@@ -72,7 +70,8 @@ void quickHull(int P1Idx_, int P2Idx_, int expectedSide_)
     for (int i = 0; i < N; ++i)
     {
         int dist = getDistFromLine(x1, y1, x2, y2, _pointsX[i], _pointsY[i]);
-        if (getSide(x1, y1, x2, y2, _pointsX[i], _pointsY[i]) == expectedSide_ && maxDist < dist)
+        int side = getSide(x1, y1, x2, y2, _pointsX[i], _pointsY[i]);
+        if (side == expectedSide_ && maxDist < dist)
         {
             maxDist = dist;
             maxDistIdx = i;
@@ -111,9 +110,9 @@ void quickHull(int P1Idx_, int P2Idx_, int expectedSide_)
 
     // Check for sides divided by maxDistIdx.
     int side = -getSide(_pointsX[maxDistIdx], _pointsY[maxDistIdx], x1, y1, x2, y2);
-    //printf("%d ", side);
+    //printf("(%d)%d ", maxDistIdx, side);
     quickHull(maxDistIdx, P1Idx_, side);
     side = -getSide(_pointsX[maxDistIdx], _pointsY[maxDistIdx], x2, y2, x1, y1);
-    //printf("%d ", side);
+    //printf("(%d)%d ", maxDistIdx, side);
     quickHull(maxDistIdx, P2Idx_, side);
 }
