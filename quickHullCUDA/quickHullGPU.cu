@@ -7,25 +7,11 @@ __device__ int d_hullX[N];
 __device__ int d_hullY[N];
 __device__ int d_hullSize;
 
-// Gets the minimum value from the array.
-__global__ void reduceMin(int* min, int* array);
-__global__ void reduceMax(int* max, int* array);
-__global__ void getIndexOfValue(int* index, int* value, int* array);
-// Returns and calculates all points distances from P1-P2 line. If side is not correct then distance is zero.
-__global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int* pointsX, int* pointsY, int expectedSide);
-// Get the side of the point which has the max distance from P1-P2 line.
-__global__ void getSide(int* side, int* maxDistIdx, int* P1Idx, int* P2Idx, int* pointsX, int* pointsY);
-// If P1 or P2 is not in hull then add to it.
-__global__ void tryAddToHull(int* P1Idx, int* P2Idx, int* pointsX, int* pointsY);
-
 // HOST
 // Result come to hull - max size is needed because all coordinate can be the part of the hull.
 int h_hullX[N];
 int h_hullY[N];
 int h_hullSize = 0; // Counts how many points are added to the hull.
-
-// Main function that is called recursively (On CPU).
-void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point of line*/, int expectedSide, int* d_pointsX, int* d_pointsY);
 
 void quickHullGPU(int* h_pointsX, int* h_pointsY)
 {
@@ -48,8 +34,8 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
     CUDA_CALL(cudaMalloc((void**)&d_min, sizeof(int)));
     CUDA_CALL(cudaMalloc((void**)&d_max, sizeof(int)));
 
-    reduceMin<<<GRID_SIZE, BLOCK_SIZE, BLOCK_SIZE * sizeof(int)>>>(d_min, d_pointsX);
-    reduceMax<<<GRID_SIZE, BLOCK_SIZE, BLOCK_SIZE * sizeof(int)>>>(d_max, d_pointsX);
+    MinSearch<<<GRID_SIZE, BLOCK_SIZE>>>(d_min, d_pointsX);
+    MaxSearch<<<GRID_SIZE, BLOCK_SIZE>>>(d_max, d_pointsX);
 
     // Get the index of min and max values.
     int* d_minIdx;
@@ -62,8 +48,15 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
     CUDA_CALL(cudaFree(d_max));
 
     // Check recursive on both sides of the min and max defined line.
-    quickHull(d_minIdx, d_maxIdx, 1, d_pointsX, d_pointsY);
-    quickHull(d_minIdx, d_maxIdx, -1, d_pointsX, d_pointsY);
+    int side = 1;
+    int* d_side;
+    CUDA_CALL(cudaMalloc((void**)&d_side, sizeof(int)));
+    CUDA_CALL(cudaMemcpy(d_side, &side, sizeof(int), cudaMemcpyHostToDevice));
+    quickHull(d_minIdx, d_maxIdx, d_side, d_pointsX, d_pointsY);
+
+    side = -1;
+    CUDA_CALL(cudaMemcpy(d_side, &side, sizeof(int), cudaMemcpyHostToDevice));
+    quickHull(d_minIdx, d_maxIdx, d_side, d_pointsX, d_pointsY);
 
     // Clean up.
     CUDA_CALL(cudaFree(d_minIdx));
@@ -81,19 +74,19 @@ void quickHullGPU(int* h_pointsX, int* h_pointsY)
     printf("\n");
 }
 
-void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point of line*/, int expectedSide, int* d_pointsX, int* d_pointsY)
+void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point of line*/, int* d_expectedSide, int* d_pointsX, int* d_pointsY)
 {
     // Calculate all points distances from the line.
     int* d_distances;
     CUDA_CALL(cudaMalloc((void**)&d_distances, N * sizeof(int)));
-    getDistancesFromLine<<<GRID_SIZE, BLOCK_SIZE>>>(d_distances, d_P1Idx, d_P2Idx, d_pointsX, d_pointsY, expectedSide);
+    getDistancesFromLine<<<GRID_SIZE, BLOCK_SIZE>>>(d_distances, d_P1Idx, d_P2Idx, d_expectedSide, d_pointsX, d_pointsY);
 
     // Get the max distance from distances.
     int* d_maxDist;
     CUDA_CALL(cudaMalloc((void**)&d_maxDist, sizeof(int)));
-    reduceMax<<<GRID_SIZE, BLOCK_SIZE, BLOCK_SIZE * sizeof(int)>>>(d_maxDist, d_distances);
+    MaxSearch<<<GRID_SIZE, BLOCK_SIZE>>>(d_maxDist, d_distances);
 
-    // Need to copy back max distance from line for CPU to decide that the recursion can be return, and the points can be added to hull.
+    // Need to copy back maxDistance for the CPU to decide if points can be added to hull and recursion reached base condition.
     int h_maxDist = -1;
     CUDA_CALL(cudaMemcpy(&h_maxDist, d_maxDist, sizeof(int), cudaMemcpyDeviceToHost));
     if (!h_maxDist)
@@ -108,7 +101,7 @@ void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point o
 
     int* d_maxDistIdx;
     CUDA_CALL(cudaMalloc((void**)&d_maxDistIdx, sizeof(int)));
-    getIndexOfValue<<<GRID_SIZE, BLOCK_SIZE>>>(d_maxDistIdx, d_maxDist, d_distances); // No problem if there are more values.
+    getIndexOfValue<<<GRID_SIZE, BLOCK_SIZE>>>(d_maxDistIdx, d_maxDist, d_distances); // No problem if there are more equal values.
 
     CUDA_CALL(cudaFree(d_maxDist));
     CUDA_CALL(cudaFree(d_distances));
@@ -117,90 +110,87 @@ void quickHull(int* d_P1Idx /*Left point of line*/, int* d_P2Idx /*Right point o
     int* d_side;
     CUDA_CALL(cudaMalloc((void**)&d_side, sizeof(int)));
     getSide<<<1, 1>>>(d_side, d_maxDistIdx, d_P1Idx, d_P2Idx, d_pointsX, d_pointsY); // This is just awfull.
-    int h_side = 0;
-    CUDA_CALL(cudaMemcpy(&h_side, d_side, sizeof(int), cudaMemcpyDeviceToHost));
-
-    quickHull(d_maxDistIdx, d_P1Idx, -h_side, d_pointsX, d_pointsY);
+    quickHull(d_maxDistIdx, d_P1Idx, d_side, d_pointsX, d_pointsY);
 
     // Calculate rigth side of max distance.
     getSide<<<1, 1>>>(d_side, d_maxDistIdx, d_P2Idx, d_P1Idx, d_pointsX, d_pointsY);
-    h_side = 0;
-    CUDA_CALL(cudaMemcpy(&h_side, d_side, sizeof(int), cudaMemcpyDeviceToHost));
-    CUDA_CALL(cudaFree(d_side));
+    quickHull(d_maxDistIdx, d_P2Idx, d_side, d_pointsX, d_pointsY);
 
-    quickHull(d_maxDistIdx, d_P2Idx, -h_side, d_pointsX, d_pointsY);
+    CUDA_CALL(cudaFree(d_side));
 }
 
 // DEVICE
 
-// Has warp
-// Has shared memory bank conflicts
-// Has instruction overhead
-__global__ void reduceMin(int* min, int* array)
+__global__ static void MinSearch(int* min, int* array)
 {
-    unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (N <= gid)
-        return;
-
-    extern __shared__ int sh_min[];
-    // Each thread loads one element from global to shared mem.
-    unsigned int tid = threadIdx.x;
-    sh_min[tid] = array[gid];
-
-    __syncthreads();
-
-    // Do reduction in shared mem.
-    for (unsigned int s = 1; s < blockDim.x; s *= 2)
-    {
-        int i = 2 * s * tid;
-        if (i < blockDim.x && (i + s) < N)
-            atomicMin(&sh_min[i], sh_min[i + s]);
-
-        __syncthreads();
+    __shared__ int localMin[BLOCK_SIZE * 2];
+    int blockSize = BLOCK_SIZE;
+    int itemc1 = threadIdx.x * 2;
+    int itemc2 = threadIdx.x * 2 + 1;
+    for (int k = 0; k <= 1; k++) {
+        int blockStart = blockIdx.x * blockDim.x * 4 + k * blockDim.x * 2;
+        int loadIndx = threadIdx.x + blockDim.x * k;
+        if (blockStart + itemc2 < N) {
+            int value1 = array[blockStart + itemc1];
+            int value2 = array[blockStart + itemc2];
+            localMin[loadIndx] = value1 < value2 ? value1 : value2;
+        }
+        else
+            if (blockStart + itemc1 < N)
+                localMin[loadIndx] = array[blockStart + itemc1];
+            else
+                localMin[loadIndx] = array[0];
     }
-
-    // Write result for this block to global mem.
-    if (tid == 0)
+    __syncthreads();
+    
+    while (blockSize > 0)
     {
-        min[blockIdx.x] = sh_min[0];
-        //printf("min = %d\n", sh_min[tid]);
+        int locMin = localMin[itemc1] < localMin[itemc2] ? localMin[itemc1] : localMin[itemc2];
+        __syncthreads();
+        localMin[threadIdx.x] = locMin;
+        __syncthreads();
+        blockSize = blockSize / 2;
+    }
+    if (threadIdx.x == 0)
+    {
+        *min = MAX_COORD;
+        atomicMin(min, localMin[0]);
     }
 }
 
-// Has warp
-// Has shared memory bank conflicts
-// Has instruction overhead
-__global__ void reduceMax(int* max, int* array)
+__global__ static void MaxSearch(int* max, int* array)
 {
-    unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (N <= gid)
-        return;
-
-    extern __shared__ int sh_max[];
-    // Each thread loads one element from global to shared mem.
-    unsigned int tid = threadIdx.x;
-
-    sh_max[tid] = array[gid];
-
+    __shared__ int localMax[BLOCK_SIZE * 2];
+    int blockSize = BLOCK_SIZE;
+    int itemc1 = threadIdx.x * 2;
+    int itemc2 = threadIdx.x * 2 + 1;
+    for (int k = 0; k <= 1; k++) {
+        int blockStart = blockIdx.x * blockDim.x * 4 + k * blockDim.x * 2;
+        int loadIndx = threadIdx.x + blockDim.x * k;
+        if (blockStart + itemc2 < N) {
+            int value1 = array[blockStart + itemc1];
+            int value2 = array[blockStart + itemc2];
+            localMax[loadIndx] = value1 > value2 ? value1 : value2;
+        }
+        else
+            if (blockStart + itemc1 < N)
+                localMax[loadIndx] = array[blockStart + itemc1];
+            else
+                localMax[loadIndx] = array[0];
+    }
     __syncthreads();
 
-    // Do reduction in shared mem.
-    for (unsigned int s = 1; s < blockDim.x; s *= 2)
+    while (blockSize > 0)
     {
-        int i = 2 * s * tid;
-        if (i < blockDim.x && (i + s) < N)
-            atomicMax(&sh_max[i], sh_max[i + s]);
-
+        int locMax = localMax[itemc1] > localMax[itemc2] ? localMax[itemc1] : localMax[itemc2];
         __syncthreads();
+        localMax[threadIdx.x] = locMax;
+        __syncthreads();
+        blockSize = blockSize / 2;
     }
-
-    // Write result for this block to global mem.
-    if (tid == 0)
+    if (threadIdx.x == 0)
     {
-        max[blockIdx.x] = sh_max[0];
-        //printf("max = %d\n", sh_max[tid]);
+        atomicMax(max, localMax[0]);
     }
 }
 
@@ -223,7 +213,7 @@ __global__ void getIndexOfValue(int* index, int* value, int* array)
     }
 }
 
-__global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int* pointsX, int* pointsY, int expectedSide)
+__global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int* expectedSide, int* pointsX, int* pointsY)
 {
     int gid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -249,16 +239,16 @@ __global__ void getDistancesFromLine(int* distances, int* P1Idx, int* P2Idx, int
     else if (area < 0)
         side = -1;
 
-    if (side == expectedSide)
+    if (side == *expectedSide)
     {
         // Distance of P0 from P1-P2 line
-        unsigned dist = abs((y0 - y1) * (x2 - x1) - (y2 - y1) * (x0 - x1));
+        int dist = abs((y0 - y1) * (x2 - x1) - (y2 - y1) * (x0 - x1));
         distances[gid] = dist;
     }
     else
         distances[gid] = 0;
 
-    //printf("distances[%d] = %d\n", gid, distances[gid]);
+    //printf("%d ", distances[gid]);
 }
 
 __global__ void getSide(int* side, int* maxDistIdx, int* P1Idx, int* P2Idx, int* pointsX, int* pointsY)
@@ -275,7 +265,10 @@ __global__ void getSide(int* side, int* maxDistIdx, int* P1Idx, int* P2Idx, int*
         *side = 1;
     if (area < 0)
         *side = -1;
-}
+    *side = -(*side);
+
+    //printf("%d ", *side);
+};
 
 __global__ void tryAddToHull(int* P1Idx, int* P2Idx, int* pointsX, int* pointsY)
 {
