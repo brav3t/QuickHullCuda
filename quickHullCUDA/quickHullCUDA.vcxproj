@@ -78,7 +78,6 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="random.cu" />
     <CudaCompile Include="quickHullGPU.cu" />
   </ItemGroup>
   <ItemGroup>
